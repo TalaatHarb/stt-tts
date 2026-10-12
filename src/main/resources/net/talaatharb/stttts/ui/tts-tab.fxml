@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Slider?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" spacing="10"
+      fx:controller="net.talaatharb.stttts.ui.TextToSpeechTabController">
+    <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Engine:" styleClass="field-label"/>
+        <ComboBox fx:id="engineCombo" prefWidth="260"/>
+        <Label fx:id="modelStatus" styleClass="muted"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Button text="Download model" onAction="#onInstall"/>
+    </HBox>
+    <Label fx:id="engineDescription" styleClass="muted" wrapText="true"/>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Language:" styleClass="field-label"/>
+        <ComboBox fx:id="languageCombo" prefWidth="180"/>
+        <Label text="Voice:" styleClass="field-label"/>
+        <ComboBox fx:id="voiceCombo" prefWidth="200"/>
+        <Label text="Speed:" styleClass="field-label"/>
+        <Slider fx:id="speedSlider" min="0.5" max="2.0" value="1.0" majorTickUnit="0.25" prefWidth="160"/>
+        <Label fx:id="speedLabel"/>
+    </HBox>
+    <TextArea fx:id="textInput" wrapText="true" VBox.vgrow="ALWAYS"
+              text="Hello! This speech was generated entirely on your own computer."/>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Button fx:id="speakButton" text="Speak" defaultButton="true" onAction="#onSpeak"/>
+        <Button fx:id="playButton" text="Play" onAction="#onPlay"/>
+        <Button fx:id="saveButton" text="Save WAV..." onAction="#onSave"/>
+        <Label fx:id="resultInfo" styleClass="muted"/>
+    </HBox>
+</VBox>

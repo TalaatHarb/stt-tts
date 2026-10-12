@@ -1,0 +1,24 @@
+.field-label {
+    -fx-font-weight: bold;
+}
+
+.engine-name {
+    -fx-font-size: 1.1em;
+}
+
+.muted {
+    -fx-text-fill: #666666;
+}
+
+.mono {
+    -fx-font-family: "Consolas", "Menlo", monospace;
+}
+
+.status-bar {
+    -fx-border-color: #d0d0d0 transparent transparent transparent;
+    -fx-background-color: #f4f4f4;
+}
+
+.button.recording {
+    -fx-base: #d9534f;
+}

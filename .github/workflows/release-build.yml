@@ -1,0 +1,105 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*' # e.g. v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build with Maven
+        run: mvn clean compile package -DskipTests -B
+
+      - name: Rename JAR with tag version
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME#v}
+          cd target
+          ORIGINAL_JAR=$(ls stt-tts-*-jar-with-dependencies.jar)
+          RENAMED_JAR="stt-tts-${VERSION}-${{ runner.os }}.jar"
+          cp "$ORIGINAL_JAR" "$RENAMED_JAR"
+          echo "RENAMED_JAR_PATH=target/$RENAMED_JAR" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Package standalone Windows application
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          $appVersionMatch = [regex]::Match($version, '^\d+(?:\.\d+){0,2}')
+          if (-not $appVersionMatch.Success) {
+            throw "Release tag must start with a numeric version for jpackage: $version"
+          }
+          $appVersion = $appVersionMatch.Value
+          $staging = "target\jpackage-input"
+          $imageDestination = "target\jpackage-output"
+          $appName = "SttTts"
+          $fatJars = @(Get-ChildItem -Path "target\stt-tts-*-jar-with-dependencies.jar")
+          if ($fatJars.Count -ne 1) {
+            throw "Expected exactly one application JAR, found $($fatJars.Count)"
+          }
+
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item $fatJars[0].FullName -Destination (Join-Path $staging "stt-tts.jar")
+          jpackage `
+            --type app-image `
+            --input $staging `
+            --name $appName `
+            --main-jar stt-tts.jar `
+            --main-class net.talaatharb.stttts.SttTtsLauncher `
+            --app-version $appVersion `
+            --vendor "Talaat Harb" `
+            --dest $imageDestination
+          if ($LASTEXITCODE -ne 0) {
+            throw "jpackage failed with exit code $LASTEXITCODE"
+          }
+          if (-not (Test-Path (Join-Path $imageDestination "$appName\$appName.exe"))) {
+            throw "Packaged Windows executable was not created"
+          }
+
+          $portableArchive = "target\stt-tts-$version-Windows-portable.zip"
+          Compress-Archive -Path (Join-Path $imageDestination $appName) -DestinationPath $portableArchive
+          "PORTABLE_APP_PATH=$portableArchive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload JAR to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            This release was automatically generated from tag `${{ github.ref_name }}`.
+            - Built on `${{ runner.os }}`
+            - Includes the JAR file with dependencies.
+          files: ${{ env.RENAMED_JAR_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload standalone Windows application to GitHub Release
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ env.PORTABLE_APP_PATH }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

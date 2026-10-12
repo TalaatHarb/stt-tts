@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+
+<BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="net.talaatharb.stttts.ui.MainController">
+    <center>
+        <TabPane tabClosingPolicy="UNAVAILABLE">
+            <tabs>
+                <Tab text="Speech to Text">
+                    <content><fx:include source="stt-tab.fxml"/></content>
+                </Tab>
+                <Tab text="Text to Speech">
+                    <content><fx:include source="tts-tab.fxml"/></content>
+                </Tab>
+                <Tab text="Voice Cloning">
+                    <content><fx:include source="cloning-tab.fxml"/></content>
+                </Tab>
+            </tabs>
+        </TabPane>
+    </center>
+    <bottom>
+        <HBox spacing="8" alignment="CENTER_LEFT" styleClass="status-bar">
+            <padding><Insets top="6" right="12" bottom="6" left="12"/></padding>
+            <Label fx:id="statusLabel" text="Ready"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <ProgressBar fx:id="statusProgress" prefWidth="260"/>
+            <Button fx:id="cancelButton" text="Cancel" onAction="#onCancel"/>
+        </HBox>
+    </bottom>
+</BorderPane>

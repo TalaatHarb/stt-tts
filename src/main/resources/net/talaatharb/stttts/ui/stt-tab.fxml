@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" spacing="10"
+      fx:controller="net.talaatharb.stttts.ui.SpeechToTextTabController">
+    <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Engine:" styleClass="field-label"/>
+        <Label fx:id="engineLabel" styleClass="engine-name"/>
+        <Label fx:id="modelStatus" styleClass="muted"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Button text="Download model" onAction="#onInstall"/>
+    </HBox>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Audio:" styleClass="field-label"/>
+        <Button fx:id="recordButton" text="Record"/>
+        <ProgressBar fx:id="levelMeter" prefWidth="120"/>
+        <Button text="Open audio file..." onAction="#onOpen"/>
+        <Button fx:id="playButton" text="Play" onAction="#onPlay"/>
+        <Label fx:id="audioInfo" styleClass="muted"/>
+    </HBox>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Language:" styleClass="field-label"/>
+        <ComboBox fx:id="languageCombo" prefWidth="180"/>
+        <CheckBox fx:id="wordTimestamps" text="Word timestamps"/>
+        <Button fx:id="transcribeButton" text="Transcribe" defaultButton="true" onAction="#onTranscribe"/>
+        <Button text="Copy text" onAction="#onCopy"/>
+        <Label fx:id="resultInfo" styleClass="muted"/>
+    </HBox>
+    <SplitPane dividerPositions="0.72" VBox.vgrow="ALWAYS">
+        <TextArea fx:id="transcript" wrapText="true" promptText="The transcription appears here"/>
+        <TextArea fx:id="wordTimings" editable="false" styleClass="mono" promptText="Word timings"/>
+    </SplitPane>
+</VBox>
