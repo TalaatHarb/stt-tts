@@ -1,41 +1,49 @@
 package net.talaatharb.stttts.ui;
 
 import java.io.IOException;
-import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 import com.google.inject.Inject;
 
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
 import javafx.scene.control.TextArea;
+import javafx.scene.layout.HBox;
 import net.talaatharb.stttts.audio.AudioClip;
 import net.talaatharb.stttts.audio.AudioPlayer;
 import net.talaatharb.stttts.audio.AudioRecorder;
 import net.talaatharb.stttts.audio.WavIO;
 import net.talaatharb.stttts.cloning.chatterbox.ChatterboxVoiceCloningService;
+import net.talaatharb.stttts.service.Language;
 import net.talaatharb.stttts.service.VoiceCloneRequest;
 import net.talaatharb.stttts.service.VoiceCloningService;
 
 /** Voice cloning: capture a short reference recording and speak new text in that voice. */
 public class VoiceCloningTabController {
-    private final VoiceCloningService service;
+    private final List<VoiceCloningService> services;
+    private final ChatterboxVoiceCloningService chatterbox;
     private final TaskRunner runner;
     private final AudioPlayer player;
     private final AudioRecorder recorder;
     private AudioClip reference;
     private AudioClip result;
 
-    @FXML private Label engineLabel;
+    @FXML private ComboBox<VoiceCloningService> engineCombo;
+    @FXML private Label engineDescription;
     @FXML private Label modelStatus;
+    @FXML private ComboBox<Language> languageCombo;
     @FXML private Label referenceHint;
     @FXML private Button recordButton;
     @FXML private ProgressBar levelMeter;
     @FXML private Label referenceInfo;
     @FXML private Button playReferenceButton;
-    @FXML private Button sampleVoiceButton;
+    @FXML private HBox exaggerationRow;
     @FXML private Slider exaggerationSlider;
     @FXML private Label exaggerationLabel;
     @FXML private TextArea textInput;
@@ -45,9 +53,10 @@ public class VoiceCloningTabController {
     @FXML private Label resultInfo;
 
     @Inject
-    public VoiceCloningTabController(VoiceCloningService service, TaskRunner runner, AudioPlayer player,
-            AudioRecorder recorder) {
-        this.service = service;
+    public VoiceCloningTabController(List<VoiceCloningService> services, ChatterboxVoiceCloningService chatterbox,
+            TaskRunner runner, AudioPlayer player, AudioRecorder recorder) {
+        this.services = services;
+        this.chatterbox = chatterbox;
         this.runner = runner;
         this.player = player;
         this.recorder = recorder;
@@ -55,18 +64,32 @@ public class VoiceCloningTabController {
 
     @FXML
     private void initialize() {
-        engineLabel.setText(service.displayName());
-        UiSupport.updateStatus(service, modelStatus);
-        referenceHint.setText(String.format(
-                "Record or open %.0f seconds of clean speech from the voice you want to clone.",
-                service.recommendedReferenceSeconds()));
+        engineCombo.getItems().setAll(services);
+        engineCombo.setCellFactory(list -> new ServiceCell());
+        engineCombo.setButtonCell(new ServiceCell());
+        engineCombo.valueProperty().addListener((obs, old, now) -> engineChanged(now));
         new RecordingControl(recorder, recordButton, levelMeter, this::setReference);
         exaggerationLabel.textProperty().bind(exaggerationSlider.valueProperty().asString("%.2f"));
+        exaggerationRow.managedProperty().bind(exaggerationRow.visibleProperty());
         cloneButton.disableProperty().bind(runner.runningProperty());
-        sampleVoiceButton.setVisible(service instanceof ChatterboxVoiceCloningService);
-        sampleVoiceButton.setManaged(sampleVoiceButton.isVisible());
+        engineCombo.getSelectionModel().selectFirst();
         setReference(null);
         setResult(null);
+    }
+
+    private void engineChanged(VoiceCloningService service) {
+        if (service == null) {
+            return;
+        }
+        engineDescription.setText(service.description());
+        UiSupport.updateStatus(service, modelStatus);
+        languageCombo.getItems().setAll(service.languages());
+        languageCombo.getSelectionModel().selectFirst();
+        languageCombo.setDisable(service.languages().size() < 2);
+        exaggerationRow.setVisible(service.supportsExaggeration());
+        referenceHint.setText(String.format(
+                "Record or open about %.0f seconds of clean speech from the voice you want to clone.",
+                service.recommendedReferenceSeconds()));
     }
 
     private void setReference(AudioClip clip) {
@@ -89,27 +112,12 @@ public class VoiceCloningTabController {
 
     @FXML
     private void onSampleVoice() {
-        if (!(service instanceof ChatterboxVoiceCloningService chatterbox)) {
-            return;
-        }
-        if (Files.isRegularFile(chatterbox.defaultVoice())) {
-            loadSample(chatterbox);
-            return;
-        }
-        if (UiSupport.confirmDownload(service)) {
-            runner.submit("Installing " + service.displayName(), progress -> {
-                service.install(progress);
-                return null;
-            }, ignored -> {
-                UiSupport.updateStatus(service, modelStatus);
-                loadSample(chatterbox);
-            }, null);
-        }
+        runner.submit("Downloading the sample voice", chatterbox::ensureDefaultVoice, this::loadSample, null);
     }
 
-    private void loadSample(ChatterboxVoiceCloningService chatterbox) {
+    private void loadSample(Path file) {
         try {
-            setReference(WavIO.read(chatterbox.defaultVoice()));
+            setReference(WavIO.read(file));
         } catch (IOException e) {
             UiSupport.error("Could not load the sample voice", e.getMessage());
         }
@@ -127,11 +135,15 @@ public class VoiceCloningTabController {
 
     @FXML
     private void onInstall() {
-        UiSupport.install(runner, service, modelStatus);
+        UiSupport.install(runner, engineCombo.getValue(), modelStatus);
     }
 
     @FXML
     private void onClone() {
+        VoiceCloningService service = engineCombo.getValue();
+        if (service == null) {
+            return;
+        }
         if (reference == null) {
             UiSupport.error("No reference voice", "Record or open a reference recording first.");
             return;
@@ -141,9 +153,11 @@ public class VoiceCloningTabController {
             UiSupport.error("Nothing to say", "Type some text first.");
             return;
         }
+        Language language = languageCombo.getValue();
         VoiceCloneRequest request;
         try {
-            request = new VoiceCloneRequest(text, reference, (float) exaggerationSlider.getValue());
+            request = new VoiceCloneRequest(text, reference, (float) exaggerationSlider.getValue(),
+                    language == null ? null : language.code());
         } catch (IllegalArgumentException e) {
             UiSupport.error("Invalid input", e.getMessage());
             return;
@@ -172,5 +186,13 @@ public class VoiceCloningTabController {
     @FXML
     private void onSave() {
         UiSupport.saveAudio(textInput.getScene().getWindow(), result, "cloned-voice.wav");
+    }
+
+    private static final class ServiceCell extends ListCell<VoiceCloningService> {
+        @Override
+        protected void updateItem(VoiceCloningService item, boolean empty) {
+            super.updateItem(item, empty);
+            setText(empty || item == null ? null : item.displayName());
+        }
     }
 }

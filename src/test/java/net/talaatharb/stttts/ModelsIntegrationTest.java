@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import net.talaatharb.stttts.audio.AudioClip;
 import net.talaatharb.stttts.audio.WavIO;
 import net.talaatharb.stttts.cloning.chatterbox.ChatterboxVoiceCloningService;
+import net.talaatharb.stttts.cloning.pocket.PocketVoiceCloningService;
+import net.talaatharb.stttts.model.GpuRuntime;
 import net.talaatharb.stttts.model.HuggingFaceDownloader;
 import net.talaatharb.stttts.model.ModelStore;
 import net.talaatharb.stttts.model.ProgressListener;
@@ -23,6 +25,9 @@ import net.talaatharb.stttts.service.TranscriptionRequest;
 import net.talaatharb.stttts.service.VoiceCloneRequest;
 import net.talaatharb.stttts.stt.whistle.WhistleSpeechToTextService;
 import net.talaatharb.stttts.tts.kokoro.KokoroTextToSpeechService;
+import net.talaatharb.stttts.tts.piper.PiperTextToSpeechService;
+import net.talaatharb.stttts.tts.pocket.PocketModels;
+import net.talaatharb.stttts.tts.pocket.PocketTextToSpeechService;
 import net.talaatharb.stttts.tts.supertonic.SupertonicTextToSpeechService;
 
 /**
@@ -36,12 +41,26 @@ class ModelsIntegrationTest {
     private static WhistleSpeechToTextService whistle;
     private static final ProgressListener LOG = (message, fraction) -> System.out.printf("  %s (%.0f%%)%n",
             message, fraction * 100);
+    private static final ProgressListener QUIET = (message, fraction) -> {
+        if (!message.startsWith("Generating")) {
+            LOG.update(message, fraction);
+        }
+    };
 
     @BeforeAll
     static void setUp() {
         assumeTrue(Boolean.getBoolean("stttts.integration"), "integration tests disabled");
         store = new ModelStore(ModelStore.defaultRoot());
         downloader = new HuggingFaceDownloader();
+        if ("gpu".equalsIgnoreCase(System.getProperty(GpuRuntime.DEVICE_PROPERTY)) && GpuRuntime.isSupported()) {
+            try {
+                GpuRuntime.install(store, ProgressListener.NONE);
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }
+        GpuRuntime.initialize(store, false);
+        System.out.println("GPU runtime active: " + GpuRuntime.isActive() + ", enabled: " + GpuRuntime.isEnabled());
         whistle = new WhistleSpeechToTextService(store, downloader);
     }
 
@@ -79,12 +98,52 @@ class ModelsIntegrationTest {
     }
 
     @Test
+    void whistleTranscribesPiperSpeech() throws Exception {
+        try (PiperTextToSpeechService piper = new PiperTextToSpeechService(store, downloader)) {
+            long start = System.nanoTime();
+            AudioClip clip = piper.synthesize(new SpeechRequest(TEXT, "en_US-lessac-medium", "en-us", 1f), LOG);
+            System.out.printf("Piper took %.1f s%n", (System.nanoTime() - start) / 1e9);
+            assertUnderstood(clip, "piper");
+            clip = piper.synthesize(new SpeechRequest(TEXT, "en_GB-alan-medium", "en-gb", 1f), LOG);
+            assertUnderstood(clip, "piper-gb");
+        }
+    }
+
+    @Test
+    void whistleTranscribesPocketSpeechAndClone() throws Exception {
+        PocketModels models = new PocketModels(store, downloader);
+        try (PocketTextToSpeechService pocket = new PocketTextToSpeechService(models);
+                PocketVoiceCloningService cloning = new PocketVoiceCloningService(models)) {
+            long start = System.nanoTime();
+            AudioClip clip = pocket.synthesize(new SpeechRequest(TEXT, "alba", "en", 1f), QUIET);
+            System.out.printf("Pocket TTS took %.1f s for %.1f s of audio%n", (System.nanoTime() - start) / 1e9,
+                    clip.durationSeconds());
+            assertUnderstood(clip, "pocket");
+
+            AudioClip reference = WavIO.read(Path.of("target", "kokoro.wav"));
+            assumeTrue(reference.durationSeconds() >= 1, "run the Kokoro test first for a reference");
+            start = System.nanoTime();
+            clip = cloning.cloneVoice(new VoiceCloneRequest(TEXT, reference, 0.5f, "en"), QUIET);
+            System.out.printf("Pocket cloning took %.1f s%n", (System.nanoTime() - start) / 1e9);
+            assertUnderstood(clip, "pocket-clone");
+        }
+    }
+
+    @Test
     void whistleTranscribesChatterboxClone() throws Exception {
         try (ChatterboxVoiceCloningService chatterbox = new ChatterboxVoiceCloningService(store, downloader)) {
             chatterbox.install(LOG);
             AudioClip reference = WavIO.read(chatterbox.defaultVoice());
-            AudioClip clip = chatterbox.cloneVoice(new VoiceCloneRequest(TEXT, reference, 0.5f), LOG);
+            long start = System.nanoTime();
+            AudioClip clip = chatterbox.cloneVoice(new VoiceCloneRequest(TEXT, reference, 0.5f), QUIET);
+            System.out.printf("Chatterbox (%s) took %.1f s%n", GpuRuntime.isEnabled() ? "GPU" : "CPU",
+                    (System.nanoTime() - start) / 1e9);
             assertUnderstood(clip, "chatterbox");
+            start = System.nanoTime();
+            clip = chatterbox.cloneVoice(new VoiceCloneRequest(TEXT, reference, 0.5f), QUIET);
+            System.out.printf("Chatterbox (%s) second run took %.1f s%n", GpuRuntime.isEnabled() ? "GPU" : "CPU",
+                    (System.nanoTime() - start) / 1e9);
+            assertUnderstood(clip, "chatterbox (warm)");
         }
     }
 }

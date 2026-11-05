@@ -2,6 +2,7 @@
 
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.Slider?>
@@ -15,22 +16,25 @@
     <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
     <HBox spacing="8" alignment="CENTER_LEFT">
         <Label text="Engine:" styleClass="field-label"/>
-        <Label fx:id="engineLabel" styleClass="engine-name"/>
+        <ComboBox fx:id="engineCombo" prefWidth="320"/>
+        <Label text="Language:" styleClass="field-label"/>
+        <ComboBox fx:id="languageCombo" prefWidth="140"/>
         <Label fx:id="modelStatus" styleClass="muted"/>
         <Region HBox.hgrow="ALWAYS"/>
         <Button text="Download model" onAction="#onInstall"/>
     </HBox>
+    <Label fx:id="engineDescription" styleClass="muted" wrapText="true"/>
     <Label fx:id="referenceHint" styleClass="muted" wrapText="true"/>
     <HBox spacing="8" alignment="CENTER_LEFT">
         <Label text="Reference:" styleClass="field-label"/>
         <Button fx:id="recordButton" text="Record"/>
         <ProgressBar fx:id="levelMeter" prefWidth="120"/>
         <Button text="Open audio file..." onAction="#onOpenReference"/>
-        <Button fx:id="sampleVoiceButton" text="Use sample voice" onAction="#onSampleVoice"/>
+        <Button text="Use sample voice" onAction="#onSampleVoice"/>
         <Button fx:id="playReferenceButton" text="Play reference" onAction="#onPlayReference"/>
         <Label fx:id="referenceInfo" styleClass="muted"/>
     </HBox>
-    <HBox spacing="8" alignment="CENTER_LEFT">
+    <HBox fx:id="exaggerationRow" spacing="8" alignment="CENTER_LEFT">
         <Label text="Exaggeration:" styleClass="field-label"/>
         <Slider fx:id="exaggerationSlider" min="0.25" max="2.0" value="0.5" majorTickUnit="0.25" prefWidth="200"/>
         <Label fx:id="exaggerationLabel"/>

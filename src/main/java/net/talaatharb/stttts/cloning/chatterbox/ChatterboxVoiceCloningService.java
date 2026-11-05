@@ -12,6 +12,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
@@ -23,6 +26,7 @@ import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.TensorInfo;
 import net.talaatharb.stttts.audio.AudioClip;
+import net.talaatharb.stttts.model.GpuRuntime;
 import net.talaatharb.stttts.model.HuggingFaceDownloader;
 import net.talaatharb.stttts.model.HuggingFaceDownloader.RemoteFile;
 import net.talaatharb.stttts.model.ModelStore;
@@ -42,11 +46,23 @@ import net.talaatharb.stttts.tts.supertonic.SupertonicText;
  */
 @Singleton
 public class ChatterboxVoiceCloningService implements VoiceCloningService {
+    private static final Logger LOG = LoggerFactory.getLogger(ChatterboxVoiceCloningService.class);
     static final String REPO = "onnx-community/chatterbox-ONNX";
     public static final int SAMPLE_RATE = 24_000;
     static final double MAX_REFERENCE_SECONDS = 10;
     private static final float REPETITION_PENALTY = 1.2f;
     private static final int MAX_CHUNK_CHARACTERS = 250;
+    /*
+     * DirectML runs the whole decoder in very large dispatches; past ~260 speech tokens (reference + new speech) a
+     * 4 GB laptop GPU exceeds the Windows GPU watchdog and the device is reset. In GPU mode the reference is shortened
+     * and the text split into smaller parts so most parts stay under the limit; longer ones are decoded on the CPU.
+     */
+    static final String GPU_TOKEN_LIMIT_PROPERTY = "stttts.chatterbox.gpuTokenLimit";
+    private static final int DEFAULT_GPU_TOKEN_LIMIT = 250;
+    private static final double GPU_REFERENCE_SECONDS = 6;
+    private static final int GPU_CHUNK_CHARACTERS = 70;
+    private static final OrtSession.SessionOptions.OptLevel DECODER_LEVEL =
+            OrtSession.SessionOptions.OptLevel.EXTENDED_OPT;
     private static final String[] MODELS = {"speech_encoder", "embed_tokens", "language_model_q4",
         "conditional_decoder"};
 
@@ -57,6 +73,7 @@ public class ChatterboxVoiceCloningService implements VoiceCloningService {
     private OrtSession embedTokens;
     private OrtSession languageModel;
     private OrtSession decoder;
+    private OrtSession gpuDecoder;
 
     @Inject
     public ChatterboxVoiceCloningService(ModelStore store, HuggingFaceDownloader downloader) {
@@ -89,6 +106,11 @@ public class ChatterboxVoiceCloningService implements VoiceCloningService {
         return MAX_REFERENCE_SECONDS;
     }
 
+    @Override
+    public boolean supportsExaggeration() {
+        return true;
+    }
+
     private List<RemoteFile> files() {
         List<RemoteFile> files = new ArrayList<>();
         for (String model : MODELS) {
@@ -106,6 +128,12 @@ public class ChatterboxVoiceCloningService implements VoiceCloningService {
         return directory.resolve("default_voice.wav");
     }
 
+    /** Downloads only the small sample voice (useful as a reference for any cloning engine). */
+    public Path ensureDefaultVoice(ProgressListener progress) throws IOException {
+        downloader.ensure(List.of(new RemoteFile(REPO, "default_voice.wav", defaultVoice())), progress);
+        return defaultVoice();
+    }
+
     @Override
     public boolean isInstalled() {
         return HuggingFaceDownloader.allPresent(files());
@@ -121,22 +149,31 @@ public class ChatterboxVoiceCloningService implements VoiceCloningService {
         try {
             install(progress.slice(0, 0.3));
             progress.update("Loading Chatterbox (this can take a while)...", -1);
+            long started = System.nanoTime();
             load();
+            LOG.info("Chatterbox models ready in {} ms", (System.nanoTime() - started) / 1_000_000);
             float exaggeration = Math.max(0.25f, Math.min(2f, request.exaggeration()));
-            AudioClip reference = request.reference().atSampleRate(SAMPLE_RATE).truncate(MAX_REFERENCE_SECONDS);
+            boolean gpu = gpuDecoder != null;
+            AudioClip reference = request.reference().atSampleRate(SAMPLE_RATE)
+                    .truncate(gpu ? GPU_REFERENCE_SECONDS : MAX_REFERENCE_SECONDS);
             progress.update("Analyzing the reference voice...", -1);
             try (Conditioning conditioning = encodeReference(reference)) {
                 List<String> chunks = SupertonicText.chunk(ChatterboxTokenizer.normalize(request.text()),
-                        MAX_CHUNK_CHARACTERS);
+                        gpu ? GPU_CHUNK_CHARACTERS : MAX_CHUNK_CHARACTERS);
                 List<AudioClip> parts = new ArrayList<>();
                 for (int i = 0; i < chunks.size(); i++) {
                     ProgressListener chunkProgress = progress.slice(0.3 + 0.7 * i / chunks.size(),
                             0.3 + 0.7 * (i + 1) / chunks.size());
                     String label = chunks.size() > 1 ? String.format(" (part %d of %d)", i + 1, chunks.size()) : "";
                     String text = ChatterboxTokenizer.normalize(chunks.get(i));
+                    long generationStart = System.nanoTime();
                     long[] tokens = generate(text, exaggeration, conditioning, chunkProgress, label);
+                    LOG.info("Generated {} speech tokens in {} ms", tokens.length,
+                            (System.nanoTime() - generationStart) / 1_000_000);
                     chunkProgress.update("Decoding audio" + label, 0.95);
+                    long decodeStart = System.nanoTime();
                     parts.add(decode(tokens, conditioning));
+                    LOG.info("Decoded audio in {} ms", (System.nanoTime() - decodeStart) / 1_000_000);
                 }
                 progress.update("Done", 1);
                 return AudioClip.concat(SAMPLE_RATE, 0.2, parts);
@@ -156,12 +193,41 @@ public class ChatterboxVoiceCloningService implements VoiceCloningService {
         if (embedTokens == null) {
             embedTokens = Onnx.open(directory.resolve("embed_tokens.onnx"));
         }
+        // DirectML can't run the language model's rotary GroupQueryAttention, so it always stays on the CPU.
         if (languageModel == null) {
             languageModel = Onnx.open(directory.resolve("language_model_q4.onnx"));
         }
-        if (decoder == null) {
-            decoder = Onnx.open(directory.resolve("conditional_decoder.onnx"));
+        if (gpuDecoder == null && GpuRuntime.isEnabled()) {
+            OrtSession session = Onnx.openAccelerated(directory.resolve("conditional_decoder.onnx"), DECODER_LEVEL);
+            if (Onnx.isAccelerated(session)) {
+                gpuDecoder = session;
+            } else {
+                decoder = session;
+            }
+        } else if (gpuDecoder != null && !GpuRuntime.isEnabled()) {
+            gpuDecoder.close();
+            gpuDecoder = null;
         }
+        // The CPU decoder takes about a minute to initialize, so in GPU mode it is only opened for sequences the GPU
+        // can't handle.
+        if (decoder == null && gpuDecoder == null) {
+            decoder = Onnx.open(directory.resolve("conditional_decoder.onnx"), DECODER_LEVEL);
+        }
+    }
+
+    /** The decoder runs on the GPU (much faster) unless the sequence is long enough to trip the GPU watchdog. */
+    private OrtSession decoderFor(int tokens) throws OrtException {
+        if (gpuDecoder != null && tokens <= gpuDecoderTokenLimit()) {
+            return gpuDecoder;
+        }
+        if (decoder == null) {
+            decoder = Onnx.open(directory.resolve("conditional_decoder.onnx"), DECODER_LEVEL);
+        }
+        return decoder;
+    }
+
+    static int gpuDecoderTokenLimit() {
+        return Integer.getInteger(GPU_TOKEN_LIMIT_PROPERTY, DEFAULT_GPU_TOKEN_LIMIT);
     }
 
     private Conditioning encodeReference(AudioClip reference) throws OrtException {
@@ -313,9 +379,11 @@ public class ChatterboxVoiceCloningService implements VoiceCloningService {
     }
 
     private AudioClip decode(long[] tokens, Conditioning conditioning) throws OrtException {
+        OrtSession session = decoderFor(tokens.length);
+        LOG.info("Decoding {} speech tokens on the {}", tokens.length, session == gpuDecoder ? "GPU" : "CPU");
         try (OnnxTensor speechTokens = OnnxTensor.createTensor(Onnx.env(), LongBuffer.wrap(tokens),
                 new long[] {1, tokens.length});
-                OrtSession.Result result = decoder.run(Map.of("speech_tokens", speechTokens,
+                OrtSession.Result result = session.run(Map.of("speech_tokens", speechTokens,
                         "speaker_embeddings", conditioning.tensor("ref_x_vector", 2),
                         "speaker_features", conditioning.tensor("prompt_feat", 3)))) {
             float[] wav = toArray(((OnnxTensor) result.get(0)).getFloatBuffer());
@@ -331,11 +399,12 @@ public class ChatterboxVoiceCloningService implements VoiceCloningService {
 
     @Override
     public synchronized void close() {
-        Onnx.closeQuietly(speechEncoder, embedTokens, languageModel, decoder);
+        Onnx.closeQuietly(speechEncoder, embedTokens, languageModel, decoder, gpuDecoder);
         speechEncoder = null;
         embedTokens = null;
         languageModel = null;
         decoder = null;
+        gpuDecoder = null;
     }
 
     /** Outputs of the speech encoder for one reference recording. */

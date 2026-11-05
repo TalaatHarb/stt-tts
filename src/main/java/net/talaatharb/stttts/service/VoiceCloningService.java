@@ -12,5 +12,10 @@ public interface VoiceCloningService extends SpeechModelService {
     /** Recommended length of the reference clip in seconds. */
     double recommendedReferenceSeconds();
 
+    /** True when {@link VoiceCloneRequest#exaggeration()} has an effect. */
+    default boolean supportsExaggeration() {
+        return false;
+    }
+
     AudioClip cloneVoice(VoiceCloneRequest request, ProgressListener progress);
 }

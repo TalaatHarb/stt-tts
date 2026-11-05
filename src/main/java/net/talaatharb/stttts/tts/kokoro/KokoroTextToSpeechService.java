@@ -110,6 +110,11 @@ public class KokoroTextToSpeechService implements TextToSpeechService {
     }
 
     private List<RemoteFile> dictionaryFiles(boolean british) {
+        return dictionaryFiles(directory, british);
+    }
+
+    /** The misaki pronunciation dictionaries used by {@link EnglishG2P}, stored in the given directory. */
+    public static List<RemoteFile> dictionaryFiles(Path directory, boolean british) {
         String prefix = british ? "gb" : "us";
         return List.of(RemoteFile.url(MISAKI + prefix + "_gold.json", directory.resolve(prefix + "_gold.json")),
                 RemoteFile.url(MISAKI + prefix + "_silver.json", directory.resolve(prefix + "_silver.json")));

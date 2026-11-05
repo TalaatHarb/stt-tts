@@ -20,6 +20,9 @@ import javafx.scene.control.Alert.AlertType;
 import javafx.stage.Stage;
 import net.talaatharb.stttts.audio.AudioPlayer;
 import net.talaatharb.stttts.config.AppModule;
+import net.talaatharb.stttts.config.AppSettings;
+import net.talaatharb.stttts.model.GpuRuntime;
+import net.talaatharb.stttts.model.ModelStore;
 import net.talaatharb.stttts.service.SpeechToTextService;
 import net.talaatharb.stttts.service.TextToSpeechService;
 import net.talaatharb.stttts.service.VoiceCloningService;
@@ -40,7 +43,10 @@ public class SttTtsApp extends Application {
             return;
         }
         try {
-            injector = Guice.createInjector(new AppModule());
+            AppSettings settings = AppSettings.load();
+            // Must happen before anything touches ONNX Runtime so the DirectML build can be swapped in.
+            GpuRuntime.initialize(new ModelStore(ModelStore.defaultRoot()), settings.gpuEnabled());
+            injector = Guice.createInjector(new AppModule(ModelStore.defaultRoot(), settings));
         } catch (RuntimeException e) {
             instance.close();
             instance = null;
@@ -112,7 +118,8 @@ public class SttTtsApp extends Application {
         injector.getInstance(TaskRunner.class).shutdown();
         injector.getInstance(AudioPlayer.class).stop();
         injector.getInstance(SpeechToTextService.class).close();
-        injector.getInstance(VoiceCloningService.class).close();
+        injector.getInstance(Key.get(new TypeLiteral<List<VoiceCloningService>>() {
+        })).forEach(VoiceCloningService::close);
         injector.getInstance(Key.get(new TypeLiteral<List<TextToSpeechService>>() {
         })).forEach(TextToSpeechService::close);
     }
