@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Hyperlink?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Slider?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" spacing="10"
+      fx:controller="net.talaatharb.stttts.ui.AudioGenerationTabController">
+    <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Engine:" styleClass="field-label"/>
+        <ComboBox fx:id="engineCombo" prefWidth="280"/>
+        <Label fx:id="modelStatus" styleClass="muted"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Button fx:id="installButton" text="Download model" onAction="#onInstall"/>
+    </HBox>
+    <Label fx:id="engineDescription" styleClass="muted" wrapText="true"/>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Hyperlink fx:id="licenseLink" onAction="#onLicense"/>
+        <CheckBox fx:id="licenseAccepted" text="I have read and accept this model's license terms"/>
+    </HBox>
+    <Label text="Large downloads; CPU generation can take minutes. Stable Audio stereo is downmixed to mono."
+           styleClass="muted" wrapText="true"/>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Label text="Duration:" styleClass="field-label"/>
+        <Slider fx:id="durationSlider" min="1" max="10" value="5" prefWidth="200"/>
+        <Label fx:id="durationLabel"/>
+        <Label text="Seed:" styleClass="field-label"/>
+        <TextField fx:id="seedInput" text="42" prefWidth="140"/>
+    </HBox>
+    <TextArea fx:id="promptInput" wrapText="true" VBox.vgrow="ALWAYS"
+              text="Soft instrumental piano with gentle percussion, calm background music"/>
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <Button fx:id="generateButton" text="Generate" onAction="#onGenerate"/>
+        <Button fx:id="playButton" text="Play" onAction="#onPlay"/>
+        <Button fx:id="saveButton" text="Save WAV..." onAction="#onSave"/>
+        <Label fx:id="resultInfo" styleClass="muted"/>
+    </HBox>
+</VBox>

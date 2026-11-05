@@ -17,13 +17,15 @@ import net.talaatharb.stttts.config.AppSettings;
 import net.talaatharb.stttts.model.GpuRuntime;
 import net.talaatharb.stttts.model.ModelStore;
 import net.talaatharb.stttts.service.VoiceCloningService;
+import net.talaatharb.stttts.service.AudioGenerationService;
 
-/** Hosts the three tabs and the shared status bar (with the GPU acceleration switch). */
+/** Hosts the tabs and the shared status bar (with the GPU acceleration switch). */
 public class MainController {
     private final TaskRunner runner;
     private final AppSettings settings;
     private final ModelStore store;
     private final List<VoiceCloningService> cloningServices;
+    private final List<AudioGenerationService> generationServices;
 
     @FXML private Label statusLabel;
     @FXML private ProgressBar statusProgress;
@@ -32,11 +34,12 @@ public class MainController {
 
     @Inject
     public MainController(TaskRunner runner, AppSettings settings, ModelStore store,
-            List<VoiceCloningService> cloningServices) {
+            List<VoiceCloningService> cloningServices, List<AudioGenerationService> generationServices) {
         this.runner = runner;
         this.settings = settings;
         this.store = store;
         this.cloningServices = cloningServices;
+        this.generationServices = generationServices;
     }
 
     @FXML
@@ -48,8 +51,8 @@ public class MainController {
         if (GpuRuntime.isSupported()) {
             gpuCheck.setSelected(GpuRuntime.isEnabled());
             gpuCheck.disableProperty().bind(runner.runningProperty());
-            gpuCheck.setTooltip(new Tooltip("Runs the Chatterbox audio decoder on any DirectX 12 GPU through "
-                    + "DirectML (~15 MB one-time download). Other models are small enough to run best on the CPU."));
+            gpuCheck.setTooltip(new Tooltip("Accelerates Chatterbox decoding and music/sound-effects generation "
+                    + "through DirectML (~15 MB one-time download). Unsupported graphs run on the CPU."));
         } else {
             gpuCheck.setDisable(true);
             gpuCheck.setTooltip(new Tooltip("GPU acceleration (DirectML) is only available on 64-bit Windows"));
@@ -108,5 +111,6 @@ public class MainController {
         settings.setGpuEnabled(enabled);
         // Loaded models keep their device; release them so the next run opens them with the new setting.
         cloningServices.forEach(VoiceCloningService::close);
+        generationServices.forEach(AudioGenerationService::close);
     }
 }

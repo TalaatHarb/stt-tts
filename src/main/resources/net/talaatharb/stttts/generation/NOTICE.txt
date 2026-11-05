@@ -1,0 +1,11 @@
+Powered by Stability AI.
+This Stability AI Model is licensed under the Stability AI Community License,
+Copyright © Stability AI Ltd. All Rights Reserved.
+Stable Audio 3's SAME-S decoder is converted from BF16 to FP32 locally; no model weights ship in this jar.
+Downloaded license copies: ~/.stt-tts/models/stable-audio-3/LICENSE.md and LICENSE_GEMMA.md.
+https://huggingface.co/stabilityai/stable-audio-3-optimized
+
+MusicGen Small: Meta / AudioCraft; model weights CC-BY-NC-4.0.
+https://huggingface.co/facebook/musicgen-small
+ONNX export: Xenova/musicgen-small.
+https://huggingface.co/Xenova/musicgen-small

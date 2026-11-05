@@ -26,6 +26,7 @@ import net.talaatharb.stttts.model.ModelStore;
 import net.talaatharb.stttts.service.SpeechToTextService;
 import net.talaatharb.stttts.service.TextToSpeechService;
 import net.talaatharb.stttts.service.VoiceCloningService;
+import net.talaatharb.stttts.service.AudioGenerationService;
 import net.talaatharb.stttts.ui.TaskRunner;
 
 public class SttTtsApp extends Application {
@@ -122,6 +123,8 @@ public class SttTtsApp extends Application {
         })).forEach(VoiceCloningService::close);
         injector.getInstance(Key.get(new TypeLiteral<List<TextToSpeechService>>() {
         })).forEach(TextToSpeechService::close);
+        injector.getInstance(Key.get(new TypeLiteral<List<AudioGenerationService>>() {
+        })).forEach(AudioGenerationService::close);
     }
 
     public static void main(String[] args) {

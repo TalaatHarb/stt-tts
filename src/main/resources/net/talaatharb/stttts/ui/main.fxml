@@ -25,6 +25,9 @@
                 <Tab text="Voice Cloning">
                     <content><fx:include source="cloning-tab.fxml"/></content>
                 </Tab>
+                <Tab text="Music &amp; Sound Effects">
+                    <content><fx:include source="generation-tab.fxml"/></content>
+                </Tab>
             </tabs>
         </TabPane>
     </center>

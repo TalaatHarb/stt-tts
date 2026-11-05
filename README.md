@@ -1,12 +1,13 @@
 # STT-TTS Studio
 
-A JavaFX desktop app for local, offline speech processing. It has three tabs, and each tab has an engine selector:
+A JavaFX desktop app for local, offline speech and audio generation. It has four tabs; TTS, cloning and audio generation offer engine selectors:
 
 | Tab | Service interface | Implementations |
 | --- | --- | --- |
 | Speech to Text | `SpeechToTextService` | `WhistleSpeechToTextService` |
 | Text to Speech | `TextToSpeechService` | `KokoroTextToSpeechService`, `SupertonicTextToSpeechService`, `PocketTextToSpeechService`, `PiperTextToSpeechService` |
 | Voice Cloning | `VoiceCloningService` | `PocketVoiceCloningService`, `ChatterboxVoiceCloningService` |
+| Music & Sound Effects | `AudioGenerationService` | `MusicGenSmallService`, `StableAudioService` (Small SFX and Small Music) |
 
 ## Models and licenses
 
@@ -18,6 +19,8 @@ A JavaFX desktop app for local, offline speech processing. It has three tabs, an
 | [Pocket TTS](https://huggingface.co/kyutai/pocket-tts) (Kyutai) | TTS + cloning | [ONNX export](https://huggingface.co/KevinAHM/pocket-tts-onnx) (int8). Voices from [kyutai/pocket-tts-without-voice-cloning](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning) | English, French, German, Spanish, Italian, Portuguese; 27 voices | CC-BY-4.0 (attribution required) |
 | [Piper](https://huggingface.co/rhasspy/piper-voices) | TTS | Official ONNX voices (medium quality) | 14 US and GB English voices | Repository: MIT. Each voice also carries its training dataset's license; see below |
 | [Chatterbox](https://huggingface.co/ResembleAI/chatterbox) (Resemble AI) | Cloning | [ONNX export](https://huggingface.co/onnx-community/chatterbox-ONNX) (4-bit LM) | English | MIT |
+| [MusicGen Small](https://huggingface.co/facebook/musicgen-small) (Meta) | Background music | [Xenova ONNX export](https://huggingface.co/Xenova/musicgen-small), int8 text encoder/decoder, FP32 EnCodec | English prompts; instrumental music, 32 kHz mono | Weights: **CC-BY-NC-4.0 (non-commercial, attribution)**. AudioCraft code: MIT |
+| [Stable Audio 3 Small SFX / Music](https://huggingface.co/stabilityai/stable-audio-3-optimized) (Stability AI) | Sound effects / background music | Official experimental ONNX, FP16 DiT + SAME-S codec + T5Gemma | English prompts, 44.1 kHz stereo downmixed to mono | **Stability AI Community License** (commercial registration and revenue restrictions); text encoder: **Gemma Terms of Use** |
 
 Piper voice datasets (from each voice's `MODEL_CARD`):
 
@@ -42,6 +45,8 @@ Other components:
 | DirectML ([Microsoft.AI.DirectML](https://www.nuget.org/packages/Microsoft.AI.DirectML)) | Optional GPU runtime (downloaded) | Microsoft DirectML license (redistributable) |
 | JavaFX | UI | GPL 2.0 with Classpath Exception |
 | Guice, Jackson | DI, JSON | Apache 2.0 |
+| Tribuo ONNX protobuf types | Portable BF16-to-FP32 codec preparation | Apache 2.0 |
+| Protocol Buffers Java | Reads/writes ONNX graph metadata and weights | BSD 3-Clause |
 
 Only clone voices you have permission to use.
 
@@ -49,10 +54,10 @@ Only clone voices you have permission to use.
 
 You only need Java 17+ and Maven. There is no Python, espeak, CUDA or separate runtime to install.
 
-- All TTS and cloning engines run in-process on ONNX Runtime for Java. Its native libraries ship inside the Maven dependency.
+- All TTS, cloning, music and sound-effects engines run in-process on ONNX Runtime for Java. Its native libraries ship inside the Maven dependency.
 - Whistle runs on Cactus' prebuilt `needle` engine executable for your OS/CPU, which the app downloads and calls as a subprocess.
 - These parts are written in pure Java:
-  - BPE (Chatterbox) and SentencePiece (Pocket) tokenizers
+  - BPE (Chatterbox, Stable Audio T5Gemma) and SentencePiece (Pocket, MusicGen T5) tokenizers
   - SafeTensors and NumPy `.npy` readers
   - English grapheme-to-phoneme conversion, with a misaki-to-espeak phoneme mapping for Piper
 - Model files are downloaded from Hugging Face the first time each model is used. They are cached in `~/.stt-tts/models`.
@@ -65,6 +70,9 @@ You only need Java 17+ and Maven. There is no Python, espeak, CUDA or separate r
 | Pocket TTS (int8) | ~120 MB per language (French ~290 MB), plus 38 MB for the cloning encoder |
 | Piper | ~63 MB per voice (dictionaries shared with Kokoro) |
 | Chatterbox (4-bit language model) | ~1.5 GB |
+| MusicGen Small | ~630 MB |
+| Stable Audio 3, first variant | ~1.7 GB; ~210 MB extra disk cache for the prepared FP32 codec |
+| Stable Audio 3, second variant | ~880 MB extra; shares text encoder, tokenizer and codec |
 | DirectML runtime (optional) | ~15 MB |
 
 ## Engine notes
@@ -78,13 +86,25 @@ You only need Java 17+ and Maven. There is no Python, espeak, CUDA or separate r
   - The reference is truncated to 10 s.
   - **Use sample voice** downloads Chatterbox's bundled default voice as a reference.
 
+## Music and sound effects
+
+In **Music & Sound Effects**, select an engine, read and accept its license, enter an English prompt, choose a duration and a whole-number seed, then **Generate**. Playback is explicit; use **Play** or **Save WAV...** after generation. Models are downloaded on demand and run locally; prompts are not uploaded. Changing engines clears license acceptance.
+
+- **MusicGen Small** generates music, not sound effects. It uses four delayed EnCodec codebooks, classifier-free guidance (3.0), seeded top-k sampling and a KV-cached decoder. Generation is limited to 10 s; 10 s takes about 500 autoregressive steps.
+- **Stable Audio 3 Small SFX** generates noises, ambience and effects; **Small Music** generates background music. Both support 1-10 s with an 8-step ping-pong sampler and the official distribution-shift schedule. Prompts must fit 256 T5Gemma tokens.
+- Stable Audio's SAME-L exports need custom TensorRT operators and cannot run in plain ONNX Runtime. The app instead uses the standard-operator SAME-S codec, promotes its BF16 operations/tensors to FP32 once in Java, and caches the result. The published weights are already FP32; the original file is unchanged. Inference sessions load and release one phase at a time to bound RAM/VRAM, so repeated generations also incur model-loading time.
+- Stable Audio output is downmixed to the app's existing mono PCM format. Stereo playback/export, long tracks, continuation, inpainting, negative prompts and configurable sampling settings are not implemented.
+- CPU generation can take minutes and the models require several GB of free RAM. A seed is reproducible for the same model/runtime/device, not guaranteed bit-identical across different devices.
+- Cancellation is checked during downloads and between inference steps. A native model-loading or inference call must finish before cancellation takes effect.
+- **Powered by Stability AI.** License copies download alongside its models. Commercial use requires reviewing the full Community License (including registration and the $1M revenue threshold) and Gemma terms. MusicGen is non-commercial; do not assume generated background music is licensed for business use.
+
 ## GPU acceleration (optional)
 
-Turn on **GPU (DirectML)** in the status bar to run the Chatterbox audio decoder on any DirectX 12 GPU (Windows x64 only). The first time, the app downloads the DirectML build of ONNX Runtime (~15 MB, from Microsoft's NuGet packages), and you need to restart the app. The setting is saved in `~/.stt-tts/settings.properties`.
+Turn on **GPU (DirectML)** in the status bar to accelerate Chatterbox decoding and supported audio-generation graphs on a DirectX 12 GPU (Windows x64 only). The first time, the app downloads the DirectML build of ONNX Runtime (~15 MB, from Microsoft's NuGet packages), and you need to restart the app. The setting is saved in `~/.stt-tts/settings.properties`. Unsupported graphs fall back to CPU with a logged warning.
 
 - On an RTX 3050 laptop GPU, a warm clone takes about 4 s instead of 12 s. Audio decoding drops from 10 s to 2 s.
-- Only the decoder is accelerated. DirectML can't run the language model's rotary GroupQueryAttention, so the language model stays on the CPU (about 1.6 s per sentence). The other engines are small enough to run best on the CPU.
-- In GPU mode, text is split into ~70-character chunks and the reference is limited to 6 s. This keeps each decode under 250 tokens; longer sequences can trip the Windows GPU watchdog (TDR).
+- For Chatterbox, only the decoder is accelerated. DirectML can't run the language model's rotary GroupQueryAttention, so the language model stays on the CPU (about 1.6 s per sentence). The speech engines other than Chatterbox remain on CPU.
+- For Chatterbox in GPU mode, text is split into ~70-character chunks and the reference is limited to 6 s. This keeps each decode under 250 tokens; longer sequences can trip the Windows GPU watchdog (TDR).
 - The high-performance (discrete) GPU is chosen automatically. On hybrid laptops the integrated GPU is slower than the CPU.
 - Loading Chatterbox still takes about 1.5 minutes either way. The decoder graph has ~24k nodes, so session creation dominates the load time.
 - CUDA isn't used because it needs a 486 MB ONNX Runtime jar plus a system-wide CUDA 12 and cuDNN 9 installation.
@@ -117,9 +137,13 @@ java -jar target/stt-tts-*-jar-with-dependencies.jar
 ```
 mvn verify                                                       # unit tests
 mvn test -Dtest=ModelsIntegrationTest -Dstttts.integration=true  # real models (add -Dstttts.device=gpu for DirectML)
+mvn test -Dtest=MusicGenIntegrationTest,StableAudioIntegrationTest -Dstttts.integration=true
+mvn test -Dtest=GenerationUiTest -Dstttts.ui=true                   # FXML/license controls; desktop required
 ```
 
 The integration test downloads every model. It synthesizes speech with Kokoro, Supertonic, Pocket TTS, Piper and Chatterbox (plus a Pocket clone), then checks that Whistle transcribes it back correctly. The Chatterbox test runs twice to measure the warm (already loaded) timing.
+
+Audio-generation integration tests download their models and check sample rate, requested duration, finite non-silent PCM and (MusicGen) seed repeatability. They are structural tests, not a judgment of music quality or prompt adherence. Running them implies accepting the respective model licenses.
 
 ## Structure
 
@@ -133,7 +157,7 @@ The project setup follows [activity-dag](https://github.com/TalaatHarb/activity-
 net.talaatharb.stttts
 ├── SttTtsApp / SttTtsLauncher / ApplicationTray / SingleInstance
 ├── config/                       AppModule (service lists, audio, model store), AppSettings (saved preferences)
-├── service/                      the three service interfaces + request/result records
+├── service/                      speech and audio-generation interfaces + request/result records
 ├── stt/whistle/                  Whistle via the needle engine
 ├── tts/kokoro/                   Kokoro + pure Java English G2P
 ├── tts/supertonic/               Supertonic 3
@@ -141,6 +165,8 @@ net.talaatharb.stttts
 ├── tts/piper/                    Piper + misaki-to-espeak phoneme mapping
 ├── cloning/pocket/               Pocket TTS voice cloning
 ├── cloning/chatterbox/           Chatterbox + pure Java BPE tokenizer, hybrid CPU/GPU decoder
+├── generation/musicgen/          MusicGen autoregressive sampling and EnCodec decoding
+├── generation/stableaudio/       Shared Stable Audio graphs, Gemma BPE, diffusion sampler, portable codec
 ├── audio/                        WAV I/O, resampling, microphone recording, playback
 ├── model/                        Hugging Face downloader, model cache, ONNX helpers, DirectML runtime
 └── ui/                           tab controllers, background task runner
@@ -148,7 +174,7 @@ net.talaatharb.stttts
 
 ## Roadmap (future work)
 
-None of these are implemented yet. The notes below come from checking the model repositories (November 2026).
+Unchecked items are future work. The research notes below come from checking the model repositories (November 2026).
 
 ### More speech-to-text engines
 
@@ -181,9 +207,12 @@ None of these are implemented yet. The notes below come from checking the model 
   - Its ONNX layout differs (q4 decoder ~235 MB), so it needs its own pipeline.
 - [ ] Consider **[Chatterbox Multilingual](https://huggingface.co/onnx-community/chatterbox-multilingual-ONNX)** (MIT, 23 languages) for non-English cloning.
 
-### New tab: sound effects and background music
+### Additional sound effects and background music models
 
-Add an `AudioGenerationService` interface (prompt, duration, seed, steps → `AudioClip`) and a fourth tab with prompt, duration and seed controls.
+- [x] `AudioGenerationService` and a fourth tab with prompt, duration, seed, license acceptance, playback and WAV export.
+- [x] MusicGen Small (ready ONNX; seeded autoregressive codebooks and EnCodec decoder).
+- [x] Stable Audio 3 Small SFX / Music (official ONNX; shared T5Gemma/SAME-S, eight diffusion steps).
+- [ ] Stereo output/export, longer tracks and additional generation controls.
 
 General caveats:
 
@@ -198,7 +227,7 @@ General caveats:
   - No official ONNX. It uses a v-objective DPM++ sampler with ~100 steps, which is slow on CPU.
   - **Better options:**
     - **Stable Audio Open Small** (341M, 11 s clips, gated).
-    - The newer **Stable Audio 3** small-sfx and small-music models, which have **official ONNX** in [stable-audio-3-optimized](https://huggingface.co/stabilityai/stable-audio-3-optimized) (not gated; the fp16 DiT is ~878 MB). Its T5Gemma text encoder falls under the Gemma Terms of Use.
+    - **Stable Audio 3** small-sfx and small-music are now available in the app; see the implementation notes above.
 - [ ] **AudioLDM 2** ([cvssp/audioldm2](https://huggingface.co/cvssp/audioldm2))
   - **CC-BY-NC-SA 4.0 (non-commercial).** Produces 16 kHz mono sound effects.
   - There is no official "small" checkpoint. The base model is the smallest, at ~1.1B in total including the text encoders.
@@ -209,13 +238,6 @@ General caveats:
   - **CC-BY-NC-SA 4.0 (non-commercial).** Flan-T5-large plus a ~866M UNet, with the AudioLDM VAE and vocoder. Produces 16 kHz, ~10 s clips.
   - Tango 2 is DPO-aligned, so it follows prompts better.
   - No official small variant and no ONNX. The export effort is similar to AudioLDM, and the Flan-T5-large encoder alone is ~780M.
-- [ ] **MusicGen Small** ([facebook/musicgen-small](https://huggingface.co/facebook/musicgen-small))
-  - 300M decoder, plus a T5-base text encoder and a 32 kHz EnCodec decoder. **Weights are CC-BY-NC 4.0 (non-commercial)**; the code is MIT.
-  - **Easiest to implement:** there is a ready [ONNX export](https://huggingface.co/Xenova/musicgen-small) (text encoder, merged decoder at int8 ~405 MB or q4 ~264 MB, EnCodec decoder, delay-pattern mask). It is an autoregressive loop like Chatterbox's LM, and the T5 tokenizer is SentencePiece, which already exists in Java.
-  - Caveats:
-    - Music only (no sound effects).
-    - 50 steps per second of audio across 4 codebooks with a delay pattern, so 10 s is ~500 steps.
-    - Needs classifier-free guidance (batch of 2) and top-k sampling.
 - [ ] **ACE-Step** ([ACE-Step](https://huggingface.co/ACE-Step))
   - v1 (3.5B, Apache 2.0) is too heavy for CPU.
   - **v1.5 (MIT)** generates full songs with lyrics, at 48 kHz stereo. It has three parts:
@@ -226,4 +248,4 @@ General caveats:
   - Only community ONNX exports exist (for example [shreyask/ACE-Step-v1.5-ONNX](https://huggingface.co/shreyask/ACE-Step-v1.5-ONNX)). They are multi-GB: the fp16 DiT is ~3 GB and the q4 condition encoder ~331 MB. Check their licenses and quality.
   - Realistically it needs a GPU and 8 GB or more of RAM.
 
-Suggested order: MusicGen Small (ready ONNX, existing autoregressive code), then Stable Audio 3 small-sfx/music (official ONNX, covers sound effects), then the diffusion models that need custom exports.
+MusicGen Small and Stable Audio 3 are implemented; the remaining diffusion models still need custom exports.

@@ -16,6 +16,10 @@ import net.talaatharb.stttts.model.ModelStore;
 import net.talaatharb.stttts.service.SpeechToTextService;
 import net.talaatharb.stttts.service.TextToSpeechService;
 import net.talaatharb.stttts.service.VoiceCloningService;
+import net.talaatharb.stttts.service.AudioGenerationService;
+import net.talaatharb.stttts.generation.musicgen.MusicGenSmallService;
+import net.talaatharb.stttts.generation.stableaudio.StableAudioModels;
+import net.talaatharb.stttts.generation.stableaudio.StableAudioService;
 import net.talaatharb.stttts.stt.whistle.WhistleSpeechToTextService;
 import net.talaatharb.stttts.tts.kokoro.KokoroTextToSpeechService;
 import net.talaatharb.stttts.tts.piper.PiperTextToSpeechService;
@@ -61,5 +65,11 @@ public class AppModule extends AbstractModule {
     List<VoiceCloningService> voiceCloningServices(PocketVoiceCloningService pocket,
             ChatterboxVoiceCloningService chatterbox) {
         return List.of(pocket, chatterbox);
+    }
+
+    @Provides
+    @Singleton
+    List<AudioGenerationService> audioGenerationServices(MusicGenSmallService musicgen, StableAudioModels stable) {
+        return List.of(musicgen, new StableAudioService(stable, false), new StableAudioService(stable, true));
     }
 }
