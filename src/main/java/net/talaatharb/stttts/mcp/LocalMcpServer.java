@@ -206,8 +206,18 @@ public class LocalMcpServer implements AutoCloseable {
                 if (!params.path("name").isTextual() || !tools.hasTool(params.path("name").asText())) {
                     return error(id, -32602, "Unknown or missing tool name");
                 }
-                JsonNode args = params.has("arguments") ? params.get("arguments") : JSON.createObjectNode();
-                if (!args.isObject()) {
+                JsonNode args = params.path("arguments");
+                if (args.isMissingNode() || args.isNull() || args.isTextual() && args.textValue().isBlank()) {
+                    args = JSON.createObjectNode();
+                } else if (args.isTextual()) {
+                    // Some clients send the arguments object as a JSON string.
+                    try {
+                        args = JSON.readTree(args.textValue());
+                    } catch (IOException e) {
+                        return error(id, -32602, "arguments must be an object");
+                    }
+                }
+                if (args == null || !args.isObject()) {
                     return error(id, -32602, "arguments must be an object");
                 }
                 CompletableFuture<ObjectNode> call = tools.call(params.get("name").textValue(), args);

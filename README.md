@@ -144,6 +144,14 @@ First activation saves a random **`mcp.token`** in that settings file. Configure
 | `generate_music` | `prompt`, `accept_license: true`, optional `model`, `duration_seconds` (`5`), `seed` (`42`) | WAV audio content and metadata |
 | `generate_sound_effects` | Same as music; default Stable Audio 3 Small SFX | WAV audio content and metadata |
 
+Tool arguments are forgiving so that LLM clients do not fail on optional settings:
+
+- Omitted, empty or placeholder values (`default`, `auto`, `none`, `null`, `any`, ...) for `model`, `voice`, `language`, `speed`, `duration_seconds`, `seed` and `word_timestamps` use the defaults (configured model, model's first voice, voice language or STT auto-detect).
+- Unknown models/voices/languages, a model of the wrong kind, and unparsable numbers also fall back to defaults. Out-of-range `speed`/`duration_seconds` are clamped. A voice whose language conflicts with `language` wins.
+- Models, voices and languages match case-insensitively by ID or name (`KOKORO`, `en-US` → `en`). Booleans and numbers may be strings (`"true"`, `"yes"`, `"3s"`). camelCase keys and common aliases (`input` → `text`, `audio` → `audio_base64`, `duration` → `duration_seconds`) are accepted; other unknown arguments are ignored. `audio_base64` may be a `data:` URI or wrapped/URL-safe base64, and `arguments` may be `null` or a JSON string.
+- Each fallback is reported in the result's `structuredContent.warnings`.
+- Calls fail only on essential input: a missing/blank `text`, `prompt` or `audio_base64`, text over 2,000 characters, invalid WAV audio, missing license consent, or a needed download without `allow_download`.
+
 Missing models, voices and language bundles are **not downloaded without consent**: install them in the desktop app, or pass `allow_download: true` with the call. For generation, first read the license links returned by `list_models`, then explicitly pass `accept_license: true` for each call. This does not remove MusicGen's non-commercial restrictions or Stable Audio's Community License/Gemma obligations. **Powered by Stability AI.**
 
 Audio input is limited to 8 MiB, 120 seconds and 8-192 kHz; HTTP request bodies to 12 MiB. Speech text/prompts are limited to 2,000 characters, speech speed to 0.5-2, and generation duration to 1-10 seconds. No filesystem paths, remote audio URLs or automatic playback are exposed. Audio stays on the local machine.

@@ -183,25 +183,69 @@ class LocalMcpServerTest {
         assertAudio(tool("generate_music", JSON.createObjectNode().put("prompt", "piano")
                 .put("accept_license", true).put("allow_download", true)));
         assertEquals(-32602, tool("not_a_tool", JSON.createObjectNode()).at("/error/code").asInt());
-        for (ObjectNode args : List.of(JSON.createObjectNode().put("text", "hello").put("speed", 0),
-                JSON.createObjectNode().put("text", "hello").put("allow_download", "true"),
-                JSON.createObjectNode().put("text", "hello").put("model", "unknown"),
-                JSON.createObjectNode().put("text", "hello").put("voice", "missing"),
-                JSON.createObjectNode().put("text", "hello").put("unexpected", 1),
+        for (ObjectNode args : List.of(JSON.createObjectNode().put("model", "kokoro"),
+                JSON.createObjectNode().put("text", "  "),
                 JSON.createObjectNode().put("text", "x".repeat(2001)))) {
             assertTrue(tool("synthesize", args).at("/result/isError").asBoolean());
         }
         assertNull(kokoro.request);
-        assertToolError(tool("generate_music", JSON.createObjectNode().put("prompt", "piano")
-                .put("accept_license", true).put("duration_seconds", 10.1)), "duration_seconds");
-        assertToolError(tool("generate_sound_effects", JSON.createObjectNode().put("prompt", "rain")
-                .put("accept_license", true).put("model", "musicgen-small")), "does not support");
+        assertToolError(tool("generate_music", JSON.createObjectNode().put("prompt", "")
+                .put("accept_license", true)), "prompt");
         for (String audio : List.of("not-base64", Base64.getEncoder().encodeToString(new byte[10]),
                 Base64.getEncoder().encodeToString(WavIO.toWavBytes(new AudioClip(new float[121 * 8000], 8000))))) {
             assertTrue(tool("transcribe", JSON.createObjectNode().put("audio_base64", audio))
                     .at("/result/isError").asBoolean());
         }
         assertNull(stt.request);
+    }
+
+    @Test
+    void fallsBackToDefaultsForPlaceholderUnknownAndMistypedOptionalArguments() throws Exception {
+        for (String placeholder : List.of("", "default", "DEFAULT", " auto ", "none")) {
+            JsonNode speech = tool("synthesize", JSON.createObjectNode().put("text", "hello").put("model", placeholder)
+                    .put("voice", placeholder).put("language", placeholder).put("speed", placeholder));
+            assertAudio(speech);
+            assertEquals("kokoro", speech.at("/result/structuredContent/model").asText());
+            assertEquals("voice", kokoro.request.voiceId());
+            assertEquals("en", kokoro.request.language());
+            assertEquals(1f, kokoro.request.speed());
+            assertTrue(speech.at("/result/structuredContent/warnings").isMissingNode());
+        }
+        JsonNode speech = tool("synthesize", JSON.createObjectNode().put("input", "hi").put("model", "unknown")
+                .put("voice", "missing").put("language", "xx").put("speed", 0).put("allowDownload", "true")
+                .put("unexpected", 1));
+        assertAudio(speech);
+        assertEquals("hi", kokoro.request.text());
+        assertEquals("voice", kokoro.request.voiceId());
+        assertEquals("en", kokoro.request.language());
+        assertEquals(0.5f, kokoro.request.speed());
+        assertEquals(5, speech.at("/result/structuredContent/warnings").size(), speech.toString());
+        assertEquals("kokoro", tool("synthesize", JSON.createObjectNode().put("text", "hello").put("model", "KOKORO")
+                .put("voice", "Voice")).at("/result/structuredContent/model").asText());
+
+        JsonNode effects = tool("generate_sound_effects", JSON.createObjectNode().put("prompt", "rain")
+                .put("accept_license", "yes").put("model", "musicgen-small").put("duration_seconds", "12s")
+                .put("seed", "default"));
+        assertAudio(effects);
+        assertEquals("stable-audio-3-sfx", effects.at("/result/structuredContent/model").asText());
+        assertEquals(10, sfx.request.durationSeconds());
+        assertEquals(42, sfx.request.seed());
+        assertEquals(2, effects.at("/result/structuredContent/warnings").size(), effects.toString());
+        assertToolError(tool("generate_music", JSON.createObjectNode().put("prompt", "piano")
+                .put("accept_license", "default")), "accept_license");
+
+        String wav = Base64.getMimeEncoder().encodeToString(WavIO.toWavBytes(audio()));
+        assertEquals("recognized speech", tool("transcribe", JSON.createObjectNode()
+                .put("audio", "data:audio/wav;base64," + wav).put("language", "default").put("model", "")
+                .put("word_timestamps", "default")).at("/result/structuredContent/text").asText());
+        assertEquals("auto", stt.request.language());
+        assertFalse(stt.request.wordTimestamps());
+        tool("transcribe", JSON.createObjectNode().put("audio_base64", wav).put("language", "klingon"));
+        assertEquals("auto", stt.request.language());
+
+        assertAudio(rpc("tools/call", "{\"name\":\"synthesize\",\"arguments\":\"{\\\"text\\\":\\\"hey\\\"}\"}"));
+        assertEquals("hey", kokoro.request.text());
+        assertTrue(rpc("tools/call", "{\"name\":\"list_models\",\"arguments\":null}").at("/result/isError").isBoolean());
     }
 
     @Test
