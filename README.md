@@ -116,6 +116,8 @@ Turn on **GPU (DirectML)** in the status bar to accelerate Chatterbox decoding a
 
 The **MCP** toggle beside **GPU (DirectML)** starts a [Streamable HTTP MCP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) endpoint at `http://127.0.0.1:8765/mcp`. It is **off on every startup**, binds only to IPv4 loopback (never `0.0.0.0`), and stops on toggle-off or application exit. Hiding the window in the tray does not stop it.
 
+The tray context menu also provides **Settings...** (restores the window and opens settings) and a checked **MCP enabled** toggle. The tray and status-bar controls stay synchronized, including when server startup fails.
+
 Click **Settings** beside the MCP toggle to open the settings window. Select the default STT, TTS, music and sound-effects models, enter a localhost port (1-65535), and **Save**. The window also shows the endpoint with **Copy URL**, and a masked bearer token with **Copy token** and **Generate token**. Cancel discards all edits; invalid input or a failed save leaves the window open with an error.
 
 Stop MCP before editing; while it is running, settings are read-only but connection details can still be copied. Saved changes apply on the next MCP activation, **without restarting the app**, and never start the server automatically. Token generation is staged until Save; clearing the token creates a fresh one on next activation. Update your MCP client's token after changing it, keep it private, and clear the clipboard after copying.

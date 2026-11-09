@@ -5,6 +5,8 @@ import java.util.List;
 import com.google.inject.Inject;
 
 import javafx.fxml.FXML;
+import javafx.beans.property.ReadOnlyBooleanProperty;
+import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
@@ -30,6 +32,7 @@ public class MainController {
     private final List<AudioGenerationService> generationServices;
     private final LocalMcpServer mcp;
     private final SettingsDialog settingsDialog;
+    private final ReadOnlyBooleanWrapper mcpEnabled = new ReadOnlyBooleanWrapper(false);
 
     @FXML private Label statusLabel;
     @FXML private ProgressBar statusProgress;
@@ -73,19 +76,36 @@ public class MainController {
 
     @FXML
     private void onMcpToggled() {
+        setMcpEnabled(mcpToggle.isSelected());
+    }
+
+    public ReadOnlyBooleanProperty mcpEnabledProperty() {
+        return mcpEnabled.getReadOnlyProperty();
+    }
+
+    /** Called on the JavaFX thread by either the tray or the status-bar toggle. */
+    public void toggleMcp() {
+        setMcpEnabled(!mcp.isRunning());
+    }
+
+    private void setMcpEnabled(boolean enabled) {
+        mcpToggle.setSelected(enabled);
         if (!mcpToggle.isSelected()) {
             mcp.close();
             mcpToggle.setText("MCP");
+            mcpEnabled.set(false);
             return;
         }
         try {
             mcp.start();
+            mcpEnabled.set(true);
             mcpToggle.setText("MCP on");
             mcpToggle.setTooltip(new Tooltip("Listening at " + mcp.endpoint()
                     + "\nView/copy the bearer token in Settings"
                     + "\nClick to stop the server and cancel its active model job."));
         } catch (java.io.IOException | RuntimeException e) {
             mcpToggle.setSelected(false);
+            mcpEnabled.set(false);
             mcpToggle.setText("MCP");
             UiSupport.error("Could not start MCP server", e.getMessage());
         }
@@ -93,6 +113,10 @@ public class MainController {
 
     @FXML
     private void onSettings() {
+        showSettings();
+    }
+
+    public void showSettings() {
         settingsDialog.show(settingsButton.getScene().getWindow());
     }
 

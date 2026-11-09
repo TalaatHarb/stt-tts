@@ -28,6 +28,7 @@ import net.talaatharb.stttts.service.TextToSpeechService;
 import net.talaatharb.stttts.service.VoiceCloningService;
 import net.talaatharb.stttts.service.AudioGenerationService;
 import net.talaatharb.stttts.ui.TaskRunner;
+import net.talaatharb.stttts.ui.MainController;
 import net.talaatharb.stttts.mcp.LocalMcpServer;
 
 public class SttTtsApp extends Application {
@@ -71,7 +72,9 @@ public class SttTtsApp extends Application {
         scene.getStylesheets().add(getClass().getResource("ui/app.css").toExternalForm());
         stage.setScene(scene);
         stage.show();
-        tray = new ApplicationTray(stage);
+        MainController controller = loader.getController();
+        tray = new ApplicationTray(stage, controller::showSettings, controller::toggleMcp,
+                controller.mcpEnabledProperty());
         if (activationPending) {
             activateWindow();
         }
