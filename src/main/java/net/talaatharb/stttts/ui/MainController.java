@@ -13,6 +13,8 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.ToggleButton;
+import net.talaatharb.stttts.mcp.LocalMcpServer;
 import net.talaatharb.stttts.config.AppSettings;
 import net.talaatharb.stttts.model.GpuRuntime;
 import net.talaatharb.stttts.model.ModelStore;
@@ -26,24 +28,34 @@ public class MainController {
     private final ModelStore store;
     private final List<VoiceCloningService> cloningServices;
     private final List<AudioGenerationService> generationServices;
+    private final LocalMcpServer mcp;
+    private final SettingsDialog settingsDialog;
 
     @FXML private Label statusLabel;
     @FXML private ProgressBar statusProgress;
     @FXML private Button cancelButton;
     @FXML private CheckBox gpuCheck;
+    @FXML private ToggleButton mcpToggle;
+    @FXML private Button settingsButton;
 
     @Inject
     public MainController(TaskRunner runner, AppSettings settings, ModelStore store,
-            List<VoiceCloningService> cloningServices, List<AudioGenerationService> generationServices) {
+            List<VoiceCloningService> cloningServices, List<AudioGenerationService> generationServices,
+            LocalMcpServer mcp, SettingsDialog settingsDialog) {
         this.runner = runner;
         this.settings = settings;
         this.store = store;
         this.cloningServices = cloningServices;
         this.generationServices = generationServices;
+        this.mcp = mcp;
+        this.settingsDialog = settingsDialog;
     }
 
     @FXML
     private void initialize() {
+        mcpToggle.setSelected(false);
+        mcpToggle.setTooltip(new Tooltip("Start localhost-only HTTP MCP (STT, TTS, music and sound effects). "
+                + "Configure port, default models and bearer token with Settings. Off on every startup."));
         statusLabel.textProperty().bind(runner.messageProperty());
         statusProgress.progressProperty().bind(runner.progressProperty());
         statusProgress.visibleProperty().bind(runner.runningProperty());
@@ -57,6 +69,31 @@ public class MainController {
             gpuCheck.setDisable(true);
             gpuCheck.setTooltip(new Tooltip("GPU acceleration (DirectML) is only available on 64-bit Windows"));
         }
+    }
+
+    @FXML
+    private void onMcpToggled() {
+        if (!mcpToggle.isSelected()) {
+            mcp.close();
+            mcpToggle.setText("MCP");
+            return;
+        }
+        try {
+            mcp.start();
+            mcpToggle.setText("MCP on");
+            mcpToggle.setTooltip(new Tooltip("Listening at " + mcp.endpoint()
+                    + "\nView/copy the bearer token in Settings"
+                    + "\nClick to stop the server and cancel its active model job."));
+        } catch (java.io.IOException | RuntimeException e) {
+            mcpToggle.setSelected(false);
+            mcpToggle.setText("MCP");
+            UiSupport.error("Could not start MCP server", e.getMessage());
+        }
+    }
+
+    @FXML
+    private void onSettings() {
+        settingsDialog.show(settingsButton.getScene().getWindow());
     }
 
     @FXML

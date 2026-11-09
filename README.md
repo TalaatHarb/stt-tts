@@ -13,7 +13,7 @@ A JavaFX desktop app for local, offline speech and audio generation. It has four
 
 | Engine | Used for | Source | Languages / voices | License |
 | --- | --- | --- | --- | --- |
-| [Whistle](https://huggingface.co/Cactus-Compute/whistle) (Cactus Compute) | STT | 16.9 MB `whistle.cact`, run by the [needle](https://huggingface.co/Cactus-Compute/needle3) engine | English | Apache 2.0 (model and engine) |
+| [Whistle](https://huggingface.co/Cactus-Compute/whistle) (Cactus Compute) | STT | 16.9 MB `whistle.cact`, run by the [Cactus runtime](https://huggingface.co/Cactus-Compute/cactus) | English, German, French, Spanish, Italian, Dutch, Polish | Apache 2.0 (model and engine) |
 | [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) | TTS | [ONNX export](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) (int8) | US and GB English voices | Apache 2.0 |
 | [Supertonic 3](https://huggingface.co/Supertone/supertonic-3) (Supertone) | TTS | Official ONNX | 31 languages | Model: OpenRAIL-M (use-based restrictions). Sample code: MIT |
 | [Pocket TTS](https://huggingface.co/kyutai/pocket-tts) (Kyutai) | TTS + cloning | [ONNX export](https://huggingface.co/KevinAHM/pocket-tts-onnx) (int8). Voices from [kyutai/pocket-tts-without-voice-cloning](https://huggingface.co/kyutai/pocket-tts-without-voice-cloning) | English, French, German, Spanish, Italian, Portuguese; 27 voices | CC-BY-4.0 (attribution required) |
@@ -55,7 +55,8 @@ Only clone voices you have permission to use.
 You only need Java 17+ and Maven. There is no Python, espeak, CUDA or separate runtime to install.
 
 - All TTS, cloning, music and sound-effects engines run in-process on ONNX Runtime for Java. Its native libraries ship inside the Maven dependency.
-- Whistle runs on Cactus' prebuilt `needle` engine executable for your OS/CPU, which the app downloads and calls as a subprocess.
+- Whistle runs on the prebuilt Cactus CPU runtime (`cactus.exe` on Windows, `cactus` on Linux/macOS), which the app downloads and calls as a subprocess. Runtime 4.1.0 is pinned to revision `4e822c9036be2eb0e47ef556df32a818bb1572ef`, under `Cactus-Compute/cactus/releases/4.1.0/<platform>/`. The weights remain at `Cactus-Compute/whistle/whistle.cact`.
+- Whistle runtime upgrades use a separate cache directory (`whistle/runtime-4.1.0/<platform>/`), preserving cached weights and old `needle` binaries. The new runtime downloads automatically on first STT use; deleting the model cache is unnecessary.
 - These parts are written in pure Java:
   - BPE (Chatterbox, Stable Audio T5Gemma) and SentencePiece (Pocket, MusicGen T5) tokenizers
   - SafeTensors and NumPy `.npy` readers
@@ -111,6 +112,46 @@ Turn on **GPU (DirectML)** in the status bar to accelerate Chatterbox decoding a
 
 ## Configuration
 
+### Local MCP server
+
+The **MCP** toggle beside **GPU (DirectML)** starts a [Streamable HTTP MCP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) endpoint at `http://127.0.0.1:8765/mcp`. It is **off on every startup**, binds only to IPv4 loopback (never `0.0.0.0`), and stops on toggle-off or application exit. Hiding the window in the tray does not stop it.
+
+Click **Settings** beside the MCP toggle to open the settings window. Select the default STT, TTS, music and sound-effects models, enter a localhost port (1-65535), and **Save**. The window also shows the endpoint with **Copy URL**, and a masked bearer token with **Copy token** and **Generate token**. Cancel discards all edits; invalid input or a failed save leaves the window open with an error.
+
+Stop MCP before editing; while it is running, settings are read-only but connection details can still be copied. Saved changes apply on the next MCP activation, **without restarting the app**, and never start the server automatically. Token generation is staged until Save; clearing the token creates a fresh one on next activation. Update your MCP client's token after changing it, keep it private, and clear the clipboard after copying.
+
+The window persists these options in `~/.stt-tts/settings.properties` (which can still be edited manually while the app is closed):
+
+```properties
+mcp.port=8765
+mcp.stt.model=whistle
+mcp.tts.model=kokoro
+mcp.music.model=musicgen-small
+mcp.sfx.model=stable-audio-3-sfx
+```
+
+Kokoro is the default fast CPU TTS engine. TTS can also default to `supertonic`, `pocket` or `piper`; music can default to `stable-audio-3-music`. The `list_models` tool provides the exact available IDs, voice/language codes and generation license links. Individual tool calls can override the configured default with `model`.
+
+First activation saves a random **`mcp.token`** in that settings file. Configure the MCP client's HTTP URL above and an **`Authorization: Bearer <mcp.token>`** header. Keep the token/settings file private; any local process possessing it can invoke the tools. Requests with foreign `Host` or `Origin` headers are rejected; no CORS access is granted to other websites. The host is deliberately not configurable.
+
+| Tool | Inputs | Output |
+| --- | --- | --- |
+| `list_models` | None | Model IDs, configured defaults, voices/languages and generation licenses |
+| `transcribe` | `audio_base64` (RIFF WAV), optional `model`, `language` (`auto`), `word_timestamps` (`false`) | Text, language, elapsed seconds and word timings |
+| `synthesize` | `text`, optional `model`, `voice`, `language`, `speed` (`1`) | MCP audio content: base64 `audio/wav`, plus sample rate/duration metadata |
+| `generate_music` | `prompt`, `accept_license: true`, optional `model`, `duration_seconds` (`5`), `seed` (`42`) | WAV audio content and metadata |
+| `generate_sound_effects` | Same as music; default Stable Audio 3 Small SFX | WAV audio content and metadata |
+
+Missing models, voices and language bundles are **not downloaded without consent**: install them in the desktop app, or pass `allow_download: true` with the call. For generation, first read the license links returned by `list_models`, then explicitly pass `accept_license: true` for each call. This does not remove MusicGen's non-commercial restrictions or Stable Audio's Community License/Gemma obligations. **Powered by Stability AI.**
+
+Audio input is limited to 8 MiB, 120 seconds and 8-192 kHz; HTTP request bodies to 12 MiB. Speech text/prompts are limited to 2,000 characters, speech speed to 0.5-2, and generation duration to 1-10 seconds. No filesystem paths, remote audio URLs or automatic playback are exposed. Audio stays on the local machine.
+
+Desktop and MCP inference share one worker and the status/progress bar. Concurrent model jobs fail with a clear busy error rather than loading competing models. **Cancel** in the app cancels the current job; stopping MCP cancels its own active job. Native calls may need to finish before cancellation releases the worker. Set generous client timeouts for initial model downloads/loading and music generation (which can take minutes).
+
+The transport is stateless, returning JSON to POST requests, with `initialize`, `ping`, `tools/list`, `tools/call` and notification acceptance. Clients must send `Content-Type: application/json`, `Accept: application/json, text/event-stream` and, after initialization, the negotiated `MCP-Protocol-Version` (`2025-11-25`, `2025-06-18` or `2025-03-26`). GET/SSE and DELETE return 405; there are no sessions, server-initiated messages, resumable streams or MCP task/cancellation-notification support. MCP support uses the JDK HTTP server and existing Jackson dependency, with no extra installs.
+
+### Runtime properties
+
 | System property | Default | Purpose |
 | --- | --- | --- |
 | `stttts.models` | `~/.stt-tts/models` | Model cache directory |
@@ -138,7 +179,8 @@ java -jar target/stt-tts-*-jar-with-dependencies.jar
 mvn verify                                                       # unit tests
 mvn test -Dtest=ModelsIntegrationTest -Dstttts.integration=true  # real models (add -Dstttts.device=gpu for DirectML)
 mvn test -Dtest=MusicGenIntegrationTest,StableAudioIntegrationTest -Dstttts.integration=true
-mvn test -Dtest=GenerationUiTest -Dstttts.ui=true                   # FXML/license controls; desktop required
+mvn test -Dtest=McpModelsIntegrationTest -Dstttts.integration=true  # real speech/music/SFX through HTTP MCP
+mvn test -Dtest=GenerationUiTest -Dstttts.ui=true                   # FXML, settings, MCP toggle, shared worker; desktop required
 ```
 
 The integration test downloads every model. It synthesizes speech with Kokoro, Supertonic, Pocket TTS, Piper and Chatterbox (plus a Pocket clone), then checks that Whistle transcribes it back correctly. The Chatterbox test runs twice to measure the warm (already loaded) timing.
@@ -158,7 +200,7 @@ net.talaatharb.stttts
 ├── SttTtsApp / SttTtsLauncher / ApplicationTray / SingleInstance
 ├── config/                       AppModule (service lists, audio, model store), AppSettings (saved preferences)
 ├── service/                      speech and audio-generation interfaces + request/result records
-├── stt/whistle/                  Whistle via the needle engine
+├── stt/whistle/                  Whistle via the version-pinned Cactus runtime
 ├── tts/kokoro/                   Kokoro + pure Java English G2P
 ├── tts/supertonic/               Supertonic 3
 ├── tts/pocket/                   Pocket TTS engine (shared with cloning), SentencePiece, SafeTensors, NumPy
@@ -167,6 +209,7 @@ net.talaatharb.stttts
 ├── cloning/chatterbox/           Chatterbox + pure Java BPE tokenizer, hybrid CPU/GPU decoder
 ├── generation/musicgen/          MusicGen autoregressive sampling and EnCodec decoding
 ├── generation/stableaudio/       Shared Stable Audio graphs, Gemma BPE, diffusion sampler, portable codec
+├── mcp/                          Localhost HTTP MCP transport and shared audio tools
 ├── audio/                        WAV I/O, resampling, microphone recording, playback
 ├── model/                        Hugging Face downloader, model cache, ONNX helpers, DirectML runtime
 └── ui/                           tab controllers, background task runner

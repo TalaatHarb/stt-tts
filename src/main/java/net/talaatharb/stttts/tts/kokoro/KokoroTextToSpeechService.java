@@ -136,6 +136,20 @@ public class KokoroTextToSpeechService implements TextToSpeechService {
         return HuggingFaceDownloader.allPresent(files(DEFAULT_VOICE));
     }
 
+    private List<RemoteFile> files(SpeechRequest request) {
+        String voice = request.voiceId() == null ? DEFAULT_VOICE : request.voiceId();
+        boolean british = request.language() != null ? BRITISH.code().equals(request.language())
+                : voice.startsWith("b");
+        List<RemoteFile> needed = new ArrayList<>(files(voice));
+        needed.addAll(dictionaryFiles(british));
+        return needed;
+    }
+
+    @Override
+    public boolean isInstalled(SpeechRequest request) {
+        return HuggingFaceDownloader.allPresent(files(request));
+    }
+
     @Override
     public void install(ProgressListener progress) throws IOException {
         downloader.ensure(files(DEFAULT_VOICE), progress);
@@ -150,9 +164,7 @@ public class KokoroTextToSpeechService implements TextToSpeechService {
         boolean british = request.language() != null ? BRITISH.code().equals(request.language())
                 : voice.startsWith("b");
         try {
-            List<RemoteFile> needed = new ArrayList<>(files(voice));
-            needed.addAll(dictionaryFiles(british));
-            downloader.ensure(needed, progress.slice(0, 0.2));
+            downloader.ensure(files(request), progress.slice(0, 0.2));
             progress.update("Loading Kokoro...", -1);
             OrtSession model = session();
             EnglishG2P phonemizer = phonemizer(british);

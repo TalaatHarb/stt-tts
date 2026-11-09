@@ -2,7 +2,7 @@ package net.talaatharb.stttts.stt.whistle;
 
 import java.util.Locale;
 
-/** Maps the running OS/CPU to the folder of the prebuilt Cactus engine on Hugging Face. */
+/** Maps the running OS/CPU to the platform folder inside a Cactus runtime release on Hugging Face. */
 public record NeedlePlatform(String folder, String executable) {
 
     public static NeedlePlatform current() {
@@ -14,11 +14,11 @@ public record NeedlePlatform(String folder, String executable) {
         String arch = normalizeArch(osArch.toLowerCase(Locale.ROOT));
         if (os.contains("win")) {
             if (arch.equals("x86_64") || arch.equals("arm64")) {
-                return new NeedlePlatform("windows-" + arch, "needle.exe");
+                return new NeedlePlatform("windows-" + arch, "cactus.exe");
             }
         } else if (os.contains("mac") || os.contains("darwin")) {
             if (arch.equals("arm64")) {
-                return new NeedlePlatform("macos-arm64", "needle");
+                return new NeedlePlatform("macos-arm64", "cactus");
             }
         } else if (os.contains("linux")) {
             switch (arch) {
@@ -26,7 +26,7 @@ public record NeedlePlatform(String folder, String executable) {
                 case "arm64":
                 case "armv7":
                 case "riscv64":
-                    return new NeedlePlatform("linux-" + arch, "needle");
+                    return new NeedlePlatform("linux-" + arch, "cactus");
                 default:
                     break;
             }

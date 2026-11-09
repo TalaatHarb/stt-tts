@@ -36,6 +36,9 @@ public final class WavIO {
     }
 
     public static AudioClip parseWav(byte[] data) throws IOException {
+        if (data.length < 12 || !"RIFF".equals(ascii(data, 0)) || !"WAVE".equals(ascii(data, 8))) {
+            throw new IOException("Expected a RIFF WAV file");
+        }
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         buffer.position(12);
         int format = -1;
@@ -47,8 +50,14 @@ public final class WavIO {
             buffer.position(buffer.position() + 4);
             long size = Integer.toUnsignedLong(buffer.getInt());
             int start = buffer.position();
-            int available = (int) Math.min(size, buffer.remaining());
+            if (size > buffer.remaining()) {
+                throw new IOException("Truncated WAV chunk: " + id);
+            }
+            int available = (int) size;
             if ("fmt ".equals(id)) {
+                if (size < 16) {
+                    throw new IOException("WAV fmt chunk is too short");
+                }
                 format = Short.toUnsignedInt(buffer.getShort());
                 channels = Short.toUnsignedInt(buffer.getShort());
                 sampleRate = buffer.getInt();
@@ -82,10 +91,11 @@ public final class WavIO {
         if (format != FORMAT_PCM && format != FORMAT_FLOAT) {
             throw new IOException("Unsupported WAV encoding (format tag " + format + ")");
         }
-        int bytesPerSample = bits / 8;
-        if (bytesPerSample <= 0) {
+        if (format == FORMAT_PCM && bits != 8 && bits != 16 && bits != 24 && bits != 32
+                || format == FORMAT_FLOAT && bits != 32 && bits != 64) {
             throw new IOException("Unsupported WAV bit depth " + bits);
         }
+        int bytesPerSample = bits / 8;
         int frames = length / (bytesPerSample * channels);
         float[] mono = new float[frames];
         ByteBuffer buffer = ByteBuffer.wrap(data, offset, length).order(ByteOrder.LITTLE_ENDIAN);

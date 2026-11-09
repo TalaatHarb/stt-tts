@@ -7,6 +7,7 @@
 <?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.ToggleButton?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Region?>
@@ -37,6 +38,8 @@
             <Label fx:id="statusLabel" text="Ready"/>
             <Region HBox.hgrow="ALWAYS"/>
             <CheckBox fx:id="gpuCheck" text="GPU (DirectML)" onAction="#onGpuToggled"/>
+            <ToggleButton fx:id="mcpToggle" text="MCP" selected="false" onAction="#onMcpToggled"/>
+            <Button fx:id="settingsButton" text="Settings" onAction="#onSettings"/>
             <ProgressBar fx:id="statusProgress" prefWidth="260"/>
             <Button fx:id="cancelButton" text="Cancel" onAction="#onCancel"/>
         </HBox>

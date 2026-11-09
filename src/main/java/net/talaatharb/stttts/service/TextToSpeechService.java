@@ -11,5 +11,10 @@ public interface TextToSpeechService extends SpeechModelService {
 
     List<Voice> voices();
 
+    /** Whether the exact requested voice/language can run without downloading additional assets. */
+    default boolean isInstalled(SpeechRequest request) {
+        return isInstalled();
+    }
+
     AudioClip synthesize(SpeechRequest request, ProgressListener progress);
 }

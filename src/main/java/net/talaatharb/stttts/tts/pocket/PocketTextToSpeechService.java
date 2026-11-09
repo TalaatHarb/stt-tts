@@ -60,6 +60,11 @@ public class PocketTextToSpeechService implements TextToSpeechService {
     }
 
     @Override
+    public boolean isInstalled(SpeechRequest request) {
+        return models.isInstalled(request.language(), request.voiceId());
+    }
+
+    @Override
     public void install(ProgressListener progress) throws IOException {
         models.install(false, progress);
     }

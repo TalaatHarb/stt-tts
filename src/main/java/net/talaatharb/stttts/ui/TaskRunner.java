@@ -1,6 +1,7 @@
 package net.talaatharb.stttts.ui;
 
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -61,6 +62,35 @@ public class TaskRunner {
             UiSupport.error("Busy", "Please wait for \"" + message.get() + "\" to finish or cancel it first.");
             return false;
         }
+        start(title, work, onSuccess, onFailure, true);
+        return true;
+    }
+
+    /** MCP shares the desktop worker and status bar, but reports errors to its caller rather than opening dialogs. */
+    public <T> CompletableFuture<T> submitRemote(String title, Work<T> work) {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        runLater(() -> {
+            if (result.isCancelled()) {
+                return;
+            } else if (executor.isShutdown()) {
+                result.completeExceptionally(new IllegalStateException("Application is shutting down"));
+            } else if (running.get()) {
+                result.completeExceptionally(new IllegalStateException("Busy: " + message.get()
+                        + ". Wait for the current job to finish or cancel it in the desktop app."));
+            } else {
+                Task<T> task = start(title, work, result::complete, result::completeExceptionally, false);
+                result.whenComplete((value, error) -> {
+                    if (result.isCancelled()) {
+                        runLater(() -> task.cancel(true));
+                    }
+                });
+            }
+        });
+        return result;
+    }
+
+    private <T> Task<T> start(String title, Work<T> work, Consumer<T> onSuccess, Consumer<Throwable> onFailure,
+            boolean showErrors) {
         Task<T> task = new WorkTask<>(title, work);
         current = task;
         running.set(true);
@@ -72,21 +102,39 @@ public class TaskRunner {
                 onSuccess.accept(task.getValue());
             }
         });
-        task.setOnCancelled(e -> finish("Cancelled: " + title));
+        task.setOnCancelled(e -> {
+            // Native inference may ignore interruption. Keep controls locked until the worker actually exits.
+            Runnable finished = () -> {
+                finish("Cancelled: " + title);
+                if (onFailure != null) {
+                    onFailure.accept(new CancellationException("Cancelled: " + title));
+                }
+            };
+            if (executor.isShutdown()) {
+                finished.run();
+            } else {
+                executor.execute(() -> runLater(finished));
+            }
+        });
         task.setOnFailed(e -> {
             Throwable error = task.getException();
             if (error instanceof CancellationException) {
                 finish("Cancelled: " + title);
+                if (onFailure != null) {
+                    onFailure.accept(error);
+                }
                 return;
             }
             finish("Failed: " + title);
             if (onFailure != null) {
                 onFailure.accept(error);
             }
-            UiSupport.error(title + " failed", error.getMessage() == null ? error.toString() : error.getMessage());
+            if (showErrors) {
+                UiSupport.error(title + " failed", error.getMessage() == null ? error.toString() : error.getMessage());
+            }
         });
         executor.submit(task);
-        return true;
+        return task;
     }
 
     private void finish(String status) {

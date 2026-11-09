@@ -37,7 +37,9 @@ import net.talaatharb.stttts.service.TranscriptionRequest;
  */
 @Singleton
 public class WhistleSpeechToTextService implements SpeechToTextService {
-    static final String ENGINE_REPO = "Cactus-Compute/needle3";
+    static final String ENGINE_REPO = "Cactus-Compute/cactus";
+    static final String ENGINE_VERSION = "4.1.0";
+    static final String ENGINE_REVISION = "4e822c9036be2eb0e47ef556df32a818bb1572ef";
     static final String MODEL_REPO = "Cactus-Compute/whistle";
     static final int SAMPLE_RATE = 16000;
 
@@ -89,7 +91,8 @@ public class WhistleSpeechToTextService implements SpeechToTextService {
     }
 
     Path engineFile() {
-        return directory.resolve(requirePlatform().folder()).resolve(requirePlatform().executable());
+        return directory.resolve("runtime-" + ENGINE_VERSION).resolve(requirePlatform().folder())
+                .resolve(requirePlatform().executable());
     }
 
     private NeedlePlatform requirePlatform() {
@@ -101,7 +104,8 @@ public class WhistleSpeechToTextService implements SpeechToTextService {
     }
 
     private List<RemoteFile> files() {
-        return List.of(new RemoteFile(ENGINE_REPO, requirePlatform().remotePath(), engineFile()),
+        return List.of(new RemoteFile(ENGINE_REPO, ENGINE_REVISION,
+                        "releases/" + ENGINE_VERSION + "/" + requirePlatform().remotePath(), engineFile()),
                 new RemoteFile(MODEL_REPO, "whistle.cact", modelFile()));
     }
 

@@ -2,12 +2,33 @@ package net.talaatharb.stttts.audio;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 
 import org.junit.jupiter.api.Test;
 
 class WavIOTest {
+    @Test
+    void rejectsMalformedHeadersAndChunksBeforeDecoding() {
+        assertThrows(IOException.class, () -> WavIO.parseWav(new byte[10]));
+        assertThrows(IOException.class, () -> WavIO.parseWav(new byte[44]));
+        byte[] wav = WavIO.toWavBytes(new AudioClip(new float[] {0.1f}, 16000));
+        byte[] shortFmt = wav.clone();
+        shortFmt[16] = 1;
+        assertThrows(IOException.class, () -> WavIO.parseWav(shortFmt));
+        byte[] oversized = wav.clone();
+        oversized[16] = (byte) 0xFF;
+        oversized[17] = (byte) 0xFF;
+        oversized[18] = (byte) 0xFF;
+        oversized[19] = (byte) 0xFF;
+        assertThrows(IOException.class, () -> WavIO.parseWav(oversized));
+        byte[] badBits = wav.clone();
+        badBits[34] = 7;
+        assertThrows(IOException.class, () -> WavIO.parseWav(badBits));
+        assertThrows(IOException.class, () -> WavIO.parseWav(java.util.Arrays.copyOf(wav, wav.length - 1)));
+    }
+
     @Test
     void roundTripsPcm16() throws IOException {
         float[] samples = new float[1600];

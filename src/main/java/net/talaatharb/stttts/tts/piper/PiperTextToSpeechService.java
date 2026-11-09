@@ -142,6 +142,20 @@ public class PiperTextToSpeechService implements TextToSpeechService {
         return HuggingFaceDownloader.allPresent(files(DEFAULT_VOICE));
     }
 
+    private List<RemoteFile> files(SpeechRequest request) {
+        String voice = request.voiceId() == null ? DEFAULT_VOICE : request.voiceId();
+        boolean british = request.language() != null ? BRITISH.code().equals(request.language())
+                : voice.startsWith("en_GB");
+        List<RemoteFile> needed = new ArrayList<>(files(voice));
+        needed.addAll(KokoroTextToSpeechService.dictionaryFiles(dictionaryDirectory, british));
+        return needed;
+    }
+
+    @Override
+    public boolean isInstalled(SpeechRequest request) {
+        return HuggingFaceDownloader.allPresent(files(request));
+    }
+
     @Override
     public void install(ProgressListener progress) throws IOException {
         downloader.ensure(files(DEFAULT_VOICE), progress);
@@ -156,9 +170,7 @@ public class PiperTextToSpeechService implements TextToSpeechService {
         boolean british = request.language() != null ? BRITISH.code().equals(request.language())
                 : voice.startsWith("en_GB");
         try {
-            List<RemoteFile> needed = new ArrayList<>(files(voice));
-            needed.addAll(KokoroTextToSpeechService.dictionaryFiles(dictionaryDirectory, british));
-            downloader.ensure(needed, progress.slice(0, 0.3));
+            downloader.ensure(files(request), progress.slice(0, 0.3));
             progress.update("Loading Piper...", -1);
             load(voice);
             EnglishG2P phonemizer = phonemizer(british);

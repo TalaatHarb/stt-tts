@@ -115,6 +115,13 @@ public class PocketModels implements AutoCloseable {
         return HuggingFaceDownloader.allPresent(files);
     }
 
+    public boolean isInstalled(String languageCode, String voice) {
+        PocketLanguage language = language(languageCode);
+        List<RemoteFile> required = files(language, false);
+        required.add(voiceFile(language, voice == null ? DEFAULT_VOICE : voice));
+        return HuggingFaceDownloader.allPresent(required);
+    }
+
     /** Downloads the English bundle (plus the default voice, or the encoder for cloning). */
     public void install(boolean encoder, ProgressListener progress) throws IOException {
         PocketLanguage english = LANGUAGES.get(0);

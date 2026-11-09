@@ -28,6 +28,7 @@ import net.talaatharb.stttts.service.TextToSpeechService;
 import net.talaatharb.stttts.service.VoiceCloningService;
 import net.talaatharb.stttts.service.AudioGenerationService;
 import net.talaatharb.stttts.ui.TaskRunner;
+import net.talaatharb.stttts.mcp.LocalMcpServer;
 
 public class SttTtsApp extends Application {
     private Injector injector;
@@ -116,6 +117,7 @@ public class SttTtsApp extends Application {
     }
 
     private void closeServices() {
+        injector.getInstance(LocalMcpServer.class).close();
         injector.getInstance(TaskRunner.class).shutdown();
         injector.getInstance(AudioPlayer.class).stop();
         injector.getInstance(SpeechToTextService.class).close();
